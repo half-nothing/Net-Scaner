@@ -1,3 +1,5 @@
 /fscan64.exe
 /venv/
 /.idea/
+/logs/
+/result.txt
