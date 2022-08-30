@@ -1,16 +1,21 @@
 from subprocess import Popen, PIPE
-from tkinter import Tk, Button, Text, Menu, Label, Scrollbar, Radiobutton
-from tkinter import HORIZONTAL, VERTICAL, END, IntVar, Y, BooleanVar, ACTIVE, DISABLED
+from tkinter import Tk, Button, Text, Menu, Label, Radiobutton
+from tkinter import HORIZONTAL, END, IntVar, X, BooleanVar, ACTIVE, DISABLED, NORMAL, RIGHT, BOTTOM
 from tkinter import messagebox
 from tkinter.simpledialog import askstring
 from re import match as rematch
 from tkinter.ttk import Separator, Combobox
-from os.path import exists
+from os.path import exists, join
 from socket import getaddrinfo
+from typing import Union
+from tkinter.filedialog import askopenfilename
+from module.ReadLanguage import language
+from os import getcwd
 
 isIp: bool = True
 host: str = ""
 subnetMask: int = 0
+savePath: str = None
 # 初始化类窗体类
 windows = Tk()
 
@@ -18,36 +23,48 @@ windows = Tk()
 def queryIp():
     global isIp, host
     if isIp:
-        messagebox.showinfo("Info", "已经是ip地址，无需查询")
+        messagebox.showinfo("Info", language.alreadyIpaddress)
     else:
         if DNSport.get() == 0:
-            messagebox.showerror("Error", "未指定DNS查询端口")
+            messagebox.showerror("Error", language.noPort)
         else:
             host = getaddrinfo(host, DNSport.get())[0][4][0]
-            label1.config(text=host)
+            module1OutputText.configure(state=NORMAL)
+            module1OutputText.delete(1.0, END)
+            module1OutputText.insert(END, host)
             isIp = True
+            module1OutputText.configure(state=DISABLED)
+            queryIpButton.configure(state=DISABLED)
 
 
 def showHost():
     global isIp, host, subnetMask
-    data = askstring('请输入', '请输入有效的ip地址或域名')
+    module1OutputText.configure(state=NORMAL)
+    data = askstring('Please enter', language.effectIpOrUrls)
     if data is None:
         return
-    if rematch("^\\b((25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\.){3}(25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\b", data):
+    if rematch("^\\b((25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\.){3}(25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\b$", data):
         subnetMask = SubnetMask.get()
         if subnetMask != 0:
             host = data + f"/{subnetMask}"
-            label1.config(text=host)
+            module1OutputText.delete(1.0, END)
+            module1OutputText.insert(END, host)
         else:
             host = data
-            label1.config(text=host)
+            module1OutputText.delete(1.0, END)
+            module1OutputText.insert(END, host)
     elif rematch("^\\b((?!-)[A-Za-z\\d-]{1,63}(?<!-)\\.)+[A-Za-z]{2,6}\\b$", data):
         isIp = False
-        label1.config(text=data)
+        module1OutputText.delete(1.0, END)
+        module1OutputText.insert(END, data)
         host = data
+        queryIpButton.configure(state=NORMAL)
     else:
-        messagebox.showerror("错误", "请输入有效的ip地址或域名")
+        messagebox.showerror("Error", language.effectIpOrUrls)
         showHost()
+    module1OutputText.configure(state=DISABLED)
+    module1OutputLabel.configure(text=language.ipAddress)
+    startScanButton.configure(state=NORMAL)
 
 
 def logger(message: str):
@@ -56,7 +73,7 @@ def logger(message: str):
 
 
 def confirmExit():
-    res = messagebox.askokcancel("确认退出", "确认退出？")
+    res = messagebox.askokcancel("Confirm", language.confirmQuit)
     if res:
         windows.destroy()
     else:
@@ -66,7 +83,7 @@ def confirmExit():
 def startScan():
     global host
     if not exists("fscan64.exe"):
-        messagebox.showerror("Error!", "无法找到fscan64.exe文件，请前往作者github下载\n"
+        messagebox.showerror("Error!", f"{language.cantFindFile.format(filename='fscan64.exe')}\n"
                                        "https://github.com/shadow1ng/fscan/releases")
         return
     # if agent.get():
@@ -80,102 +97,184 @@ def startScan():
         logger(Popen([".\\fscan64.exe", "-u", host], stdout=PIPE).communicate()[0].decode())
         logger("----------------------------------------------------------------------")
 
+
 def EnableAgent():
-    agentType1.configure(state=ACTIVE)
-    agentType2.configure(state=ACTIVE)
+    agentTypeProxy.configure(state=ACTIVE)
+    agentTypeSocks5.configure(state=ACTIVE)
+    match agentType.get():
+        case 1:
+            agentAddress.configure(state=DISABLED)
+        case 2:
+            agentAddress.configure(state=NORMAL)
+
 
 def DisableAgent():
-    agentType1.configure(state=DISABLED)
-    agentType2.configure(state=DISABLED)
+    agentTypeProxy.configure(state=DISABLED)
+    agentTypeSocks5.configure(state=DISABLED)
+    agentAddress.configure(state=DISABLED)
 
 
-# 定义第一组单选返回值
+def ProxyAddress():
+    agentAddress.configure(state=NORMAL)
+    agentAddress.delete(1.0, END)
+    address = CheckProxy(askstring(language.getAgentAddressTitle, language.getAgentAddressInfo.format(type="Http")), "Http")
+    if address is None:
+        agentAddress.insert(END, "http://127.0.0.1:8080")
+    else:
+        agentAddress.insert(END, address)
+    agentAddress.configure(state=DISABLED)
+
+
+def SocketAddress():
+    agentAddress.configure(state=NORMAL)
+    agentAddress.delete(1.0, END)
+    address = CheckProxy(askstring(language.getAgentAddressTitle, language.getAgentAddressInfo.format(type="Socket")), "Socket")
+    if address is None:
+        agentAddress.insert(END, "socks5://127.0.0.1:1080")
+    else:
+        agentAddress.insert(END, address)
+    agentAddress.configure(state=DISABLED)
+
+
+def CheckProxy(address: str, connectType: str) -> Union[str, None]:
+    if address is None:
+        return None
+    if rematch(
+            "^\\b(((25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\.){3}(25[0-5]|2[0-4]\\d|[01]?\\d\\d?)|((?!-)[A-Za-z\\d-]{1,63}(?<!-)\\.)+[A-Za-z]{2,6}):(6553[0-5]|655[0-2]\\d|65[0-4]\\d{2}|6[0-4]\\d{3}|[1-5]\\d{4}|[1-9]\\d{1,3}|\\d)\\b$",
+            address) is None:
+        messagebox.showerror("Error", language.invalidAgentAddress)
+        return CheckProxy(askstring(language.getAgentAddressTitle, language.getAgentAddressInfo.format(type=connectType)), connectType)
+    else:
+        if connectType == "Http":
+            return f"http://{address}"
+        elif connectType == "Socket":
+            return f"socks5://{address}"
+
+
+def Subnet():
+    global host
+    if SubnetMask.get() != 0:
+        host = f"{host.split('/')[0]}/{SubnetMask.get()}"
+        module1OutputText.configure(state=NORMAL)
+        module1OutputText.delete(1.0, END)
+        module1OutputText.insert(END, host)
+        module1OutputText.configure(state=DISABLED)
+
+
+def FromFile():
+    global host
+    host = askopenfilename(title=language.choiceTxt, filetypes=[('TXT', '*.txt'), ('All Files', '*')], initialdir='.\\')
+    module1OutputLabel.configure(text=language.fileName)
+    module1OutputText.configure(state=NORMAL)
+    module1OutputText.delete(1.0, END)
+    module1OutputText.insert(END, host)
+    module1OutputText.see(END)
+    module1OutputText.configure(state=DISABLED)
+    queryIpButton.configure(state=DISABLED)
+    startScanButton.configure(state=NORMAL)
+    updateSubnetMaskButton.configure(state=DISABLED)
+
+
+def ChoiceSaveFile():
+    global savePath
+    savePath = askopenfilename(title=language.choiceTxt, filetypes=[('TXT', '*.txt'), ('All Files', '*')], initialdir='.\\')
+    if savePath == "":
+        savePath = join(getcwd(), "result.txt")
+    outputFilePath.configure(state=NORMAL)
+    outputFilePath.delete(1.0, END)
+    outputFilePath.insert(END, savePath)
+    outputFilePath.see(END)
+    outputFilePath.configure(state=DISABLED)
+
+def DelSaveFile():
+    outputFilePath.configure(state=NORMAL)
+    outputFilePath.delete(1.0, END)
+    outputFilePath.configure(state=DISABLED)
+
+
+# 第一模块
+# 静态资源
+Label(windows, text=language.port).place(x=630, y=0, width=60, height=20)
+Label(windows, text=language.subnetMask).place(x=680, y=0, width=100)
+Label(windows, text=language.saveResult).place(x=820, y=0, width=120)
+# 单选复选取值定义
 DNSport = IntVar()
-Radiobutton(windows, text="80", variable=DNSport, value=80).place(x=265, y=20)
-Radiobutton(windows, text="443", variable=DNSport, value=443).place(x=265, y=40)
-
-# 复选框
 SubnetMask = IntVar()
+SaveFile = BooleanVar()
+# 单选复选定义
+Radiobutton(windows, text="80", variable=DNSport, value=80).place(x=645, y=20)
+Radiobutton(windows, text="443", variable=DNSport, value=443).place(x=645, y=40)
 Combobox(windows, textvariable=SubnetMask,
-         values=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-                   26, 27, 28, 29, 30, 31, 32]).place(x=320, y=30)
-Label(windows, text="子网掩码:").place(x=320, y=5, width=60)
+            values=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+                          26, 27, 28, 29, 30, 31, 32]).place(x=705, y=30, width=100)
+Radiobutton(windows, text=language.save, variable=SaveFile, command=ChoiceSaveFile, value=True).place(x=820, y=20)
+Radiobutton(windows, text=language.doNotSave, variable=SaveFile, command=DelSaveFile, value=False).place(x=820, y=40)
+# 按钮定义
+updateSubnetMaskButton = Button(windows, text=language.updateSubnetMask, command=Subnet)
+inputButton = Button(windows, command=showHost, text=language.enterAddress)
+fromfileButton = Button(windows, command=FromFile, text=language.fromFile)
+queryIpButton = Button(windows, command=queryIp, text=language.getIpAddress, state=DISABLED)
+startScanButton = Button(windows, command=startScan, text=language.startScan, state=DISABLED)
+updateSubnetMaskButton.place(x=475, y=30, width=140)
+inputButton.place(x=15, y=30, width=100)
+fromfileButton.place(x=130, y=30, width=100)
+queryIpButton.place(x=245, y=30, width=100)
+startScanButton.place(x=360, y=30, width=100)
+# 信息输出
+module1OutputText = Text(windows, state=DISABLED)
+module1OutputText.place(x=100, y=5, width=520, height=20)
+module1OutputLabel = Label(windows, text=language.ipAddress)
+module1OutputLabel.place(x=15, y=5, width=80, height=20)
+outputFilePath = Text(windows, state=DISABLED)
+outputFilePath.place(x=890, y=22, height=40, width=120)
 
-# 是否启用代理
-Label(windows, text="是否启用代理:").place(x=15, y=77)
-agent = BooleanVar()
-Radiobutton(windows, text="启用", command=EnableAgent, variable=agent, value=True).place(x=100, y=75)
-Radiobutton(windows, text="不启用", command=DisableAgent, variable=agent, value=False).place(x=160, y=75)
 
-# 代理类型
-Label(windows, text="代理类型:").place(x=15, y=97)
+# 第二模块
+# 静态资源
+Label(windows, text=language.enableAgent).place(x=15, y=77)
+Label(windows, text=language.agentAddress).place(x=15, y=117)
+Label(windows, text=language.agentType).place(x=15, y=97)
+# 单选框取值定义
+enableAgent = BooleanVar()
 agentType = IntVar()
-agentType1 = Radiobutton(windows, text="proxy", state=DISABLED, variable=agentType, value=1)
-agentType1.place(x=100, y=95)
-agentType2 = Radiobutton(windows, text="socks5", state=DISABLED, variable=agentType, value=2)
-agentType2.place(x=160, y=95)
+# 单选框定义
+Radiobutton(windows, text=language.enable, command=EnableAgent, variable=enableAgent, value=True).place(x=100, y=75)
+Radiobutton(windows, text=language.disable, command=DisableAgent, variable=enableAgent, value=False).place(x=170, y=75)
+agentTypeProxy = Radiobutton(windows, text="proxy", command=ProxyAddress, state=DISABLED, variable=agentType, value=1)
+agentTypeSocks5 = Radiobutton(windows, text="socks5", command=SocketAddress, state=DISABLED, variable=agentType, value=2)
+agentTypeProxy.place(x=100, y=95)
+agentTypeSocks5.place(x=170, y=95)
+# 第二模块输出
+agentAddress = Text(windows, state=DISABLED)
+agentAddress.place(x=17, y=137, height=20, width=205)
 
-# 代理地址
 
+# 分割线
+line1 = Separator(windows, orient=HORIZONTAL)
+line1.place(x=0, y=70, relwidth=1)
+
+# 定义消息输出
+logOutput = Text(windows)
+logOutput.place(x=0, rely=0.5, relheight=0.5, relwidth=1)
+
+# 原作者连接显示
+github = Label(windows, text=language.added.format(url="https://github.com/shadow1ng/fscan"))
+github.pack(fill=X, side=BOTTOM)
+
+# 菜单
+MainMenu = Menu(windows)
+FileMenu = Menu(MainMenu)
+MainMenu.add_cascade(label=language.file, menu=FileMenu)
+FileMenu.add_command(label=language.exit, command=confirmExit)
+
+# 退出确认
+windows.protocol("WM_DELETE_WINDOW", confirmExit)
 
 # 窗口标题
 windows.title("Net Scaner")
 
 # 窗口大小
 windows.geometry("1024x720")
-
-# 标签
-Label(windows, text="端口:").place(x=255, y=5, width=60, height=20)
-Label(windows, text="IP地址:").place(x=15, y=5, width=40, height=20)
-label1 = Label(windows)
-label1.place(x=60, y=5, width=200, height=20)
-
-# 输入地址
-inputBox = Button(windows, command=showHost, text="输入地址")
-inputBox.place(x=15, y=30, width=70)
-
-# 获取ip
-query = Button(windows, command=queryIp, text="获取ip")
-query.place(x=90, y=30, width=70)
-
-# 开始扫描
-scan = Button(windows, command=startScan, text="开始扫描")
-scan.place(x=165, y=30, width=70)
-
-# 分割线
-line1 = Separator(windows, orient=HORIZONTAL)
-line1.place(x=0, y=70, width=490)
-
-line2 = Separator(windows, orient=VERTICAL)
-line2.place(x=490, y=0, height=70)
-
-line3 = Separator(windows, orient=HORIZONTAL)
-line3.place(x=0, y=360, relwidth=1)
-
-# 定义消息输出
-logOutput = Text(windows)
-logOutput.place(x=0, y=361, relheight=0.5, width=1007)
-
-# 滚动条
-scroll = Scrollbar(windows)
-scroll.pack(fill=Y)
-scroll.place(x=1007, y=361, relheight=0.5)
-
-scroll.config(command=logOutput.yview)
-logOutput.config(yscrollcommand=scroll.set)
-
-# 原作者连接显示
-github = Label(windows, text="本软件只是对别人软件的可视化封装，具体软件的GitHub: https://github.com/shadow1ng/fscan")
-github.place(x=0, y=700, relwidth=1, height=20)
-
-# 菜单
-MainMenu = Menu(windows)
-FileMenu = Menu(MainMenu)
-MainMenu.add_cascade(label="文件", menu=FileMenu)
-FileMenu.add_command(label="退出", command=confirmExit)
-
-# 退出确认
-windows.protocol("WM_DELETE_WINDOW", confirmExit)
 
 # 运行窗口
 windows.config(menu=MainMenu)
