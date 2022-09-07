@@ -27,5 +27,19 @@
   added: "本软件只是对别人软件的可视化封装，具体软件的GitHub: {url}",
   saveResult: "保存结果到文件：",
   save: "保存",
-  doNotSave: "不保存"
+  doNotSave: "不保存",
+  whetherUrl: "文件内是不是网址?",
+  other: {
+    title: "其他",
+    about: "关于",
+    setting: "设置"
+  },
+  scanning: "扫描中...",
+  finishing: "扫描完成",
+  webPoc: "跳过web poc扫描",
+  password: "跳过密码爆破",
+  survival: "跳过存活探测",
+  limit: "发包速率:",
+  setCookie: "设置cookie",
+  cookie: "cookie:"
 }
